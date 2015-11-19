@@ -38,5 +38,9 @@ module.exports.getServiceCreds = function(name) {
             }
         }
     }
-    return {};
+    return {
+        "url": "https://gateway.watsonplatform.net/visual-recognition-beta/api",
+        "username": "43821360-28ea-49c8-a23a-42da50cac4c1",
+        "password": "EN71u5DDOR4d"
+      };
 };

@@ -42,14 +42,41 @@ var upload = multer({ storage: storage });
 require('./config/express')(app);
 
 // if bluemix credentials exists, then override local
-var credentials = extend({
+var visualRecognitionCredentials = extend({
   version: 'v1',
   username: '<username>',
   password: '<password>'
 }, bluemix.getServiceCreds('visual_recognition')); // VCAP_SERVICES
 
+console.log("visualRecognitionCredentials:"+JSON.stringify(visualRecognitionCredentials));
+
 // Create the service wrapper
-var visualRecognition = watson.visual_recognition(credentials);
+var visualRecognition = watson.visual_recognition(visualRecognitionCredentials);
+
+// For local development, replace username and password
+var textToSpeech = watson.text_to_speech({
+  version: 'v1',
+  url: 'https://stream.watsonplatform.net/text-to-speech/api',
+  username: '925d0330-d94d-4cd1-8fb6-1aa2e59e4ebc',
+  password: 'v76upMjfp5Oe'
+});
+
+
+app.get('/api/synthesize', function(req, res, next) {
+  var transcript = textToSpeech.synthesize(req.query);
+  console.log("/api/sunthesize - req:")
+  transcript.on('response', function(response) {
+    if (req.query.download) {
+      response.headers['content-disposition'] = 'attachment; filename=transcript.flac';
+    }
+  });
+  transcript.on('error', function(error) {
+    console.log("error " + error);
+    next(error);
+  });
+  transcript.pipe(res);
+});
+
 
 app.post('/', upload.single('image'), function(req, res, next) {
 
