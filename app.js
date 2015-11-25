@@ -44,8 +44,9 @@ require('./config/express')(app);
 // if bluemix credentials exists, then override local
 var visualRecognitionCredentials = extend({
   version: 'v1',
-  username: '<username>',
-  password: '<password>'
+  url: "https://gateway.watsonplatform.net/visual-recognition-beta/api",
+  username: "43821360-28ea-49c8-a23a-42da50cac4c1",
+  password: "EN71u5DDOR4d"
 }, bluemix.getServiceCreds('visual_recognition')); // VCAP_SERVICES
 
 console.log("visualRecognitionCredentials:"+JSON.stringify(visualRecognitionCredentials));
@@ -63,8 +64,11 @@ var textToSpeech = watson.text_to_speech({
 
 
 app.get('/api/synthesize', function(req, res, next) {
+  console.log("api/synthesize query:"+JSON.stringify(req.query));
+  //example of query object
+//  {"voice":"en-US_MichaelVoice","text":"This is what I see in the picture: Food, Burning, and, Fabric","download":"true","accept":"audio/flac"}
+
   var transcript = textToSpeech.synthesize(req.query);
-  console.log("/api/sunthesize - req:")
   transcript.on('response', function(response) {
     if (req.query.download) {
       response.headers['content-disposition'] = 'attachment; filename=transcript.flac';
@@ -78,7 +82,7 @@ app.get('/api/synthesize', function(req, res, next) {
 });
 
 
-app.post('/', upload.single('image'), function(req, res, next) {
+app.post('/api/visual-recognition', upload.single('image'), function(req, res, next) {
 
   // Classifiers are 0 = all or a json = {label_groups:['<classifier-name>']}
   var classifier = req.body.classifier || '0';  // All
@@ -116,6 +120,96 @@ app.post('/', upload.single('image'), function(req, res, next) {
       next(err);
     else
       return res.json(result);
+  });
+});
+
+
+// new stuff
+
+var getSentenceToSpeak = function(labelsJSON){
+    console.log("labelsJSON:("+labelsJSON.length+")"+JSON.stringify(labelsJSON));
+    var sentence="";
+    for (var i=0;i<labelsJSON.length;i++){
+      console.log("label_name:"+labelsJSON[i].label_name);
+      if(i==0){
+        sentence = "This is what I see in the picture: " + labelsJSON[i].label_name;
+      }
+      else if(i==labelsJSON.length-1){
+        //last label
+        sentence=sentence+", and, " + labelsJSON[i].label_name;
+      }
+      else{
+        sentence=sentence+", " + labelsJSON[i].label_name;
+      }
+      
+    }
+    console.log("Sentence:"+sentence);
+    return sentence;
+  }
+
+
+
+app.post('/api/imagesynthesize', upload.single('image'), function(req, res, next) {
+
+  // Classifiers are 0 = all or a json = {label_groups:['<classifier-name>']}
+  var classifier = req.body.classifier || '0';  // All
+  if (classifier !== '0') {
+    classifier = JSON.stringify({label_groups:[classifier]});
+  }
+
+  var imgFile;
+
+  if (req.file) {
+    // file image
+    imgFile = fs.createReadStream(req.file.path);
+  } else if(req.body.url && validator.isURL(req.body.url)) {
+    // web image
+    imgFile = request(req.body.url.split('?')[0]);
+  } else if (req.body.url && req.body.url.indexOf('images') === 0) {
+    // local image
+    imgFile = fs.createReadStream(path.join('public', req.body.url));
+  } else {
+    // malformed url
+    return next({ error: 'Malformed URL', code: 400 });
+  }
+
+  var formData = {
+    labels_to_check: classifier,
+    image_file: imgFile
+  };
+
+  visualRecognition.recognize(formData, function(err, result) {
+    // delete the recognized file
+    if(req.file){
+      fs.unlink(imgFile.path);
+    }
+
+    if (err){
+      next(err);
+    }
+    else{
+      console.log("result from image recognition:"+JSON.stringify(result));
+      var sentence = getSentenceToSpeak(result.images[0].labels);
+      console.log("sentence:"+sentence);
+
+      //synthetize stuff
+
+      var transcript = textToSpeech.synthesize(req.query);
+      console.log("/api/sunthesize - req:")
+      transcript.on('response', function(response) {
+        if (req.query.download) {
+          response.headers['content-disposition'] = 'attachment; filename=transcript.flac';
+        }
+      });
+      transcript.on('error', function(error) {
+        console.log("error " + error);
+        next(error);
+      });
+      transcript.pipe(res);
+
+
+    //  return res.json(result);
+    }
   });
 });
 
